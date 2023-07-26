@@ -1,0 +1,27 @@
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore generated distribution files
+dist/
+build/
+*.egg-info/
+
+# Ignore local development settings
+.env
+*.env
+
+# Ignore editor-specific files
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Ignore temporary files
+*.swp
+*~
+
+# Ignore system-specific files
+.DS_Store
+Thumbs.db
