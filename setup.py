@@ -4,8 +4,8 @@ setup(
     name='manic-xai',
     version='0.1.0',
     description='Genetic Algorithm for Generating Metacounterfactual Explanations',
-    authors = [
-        { name="Craig Pirie", email="c.pirie11@rgu.ac.uk" },
+    authors= [
+        { name="Craig Pirie", email="c.pirie11@rgu.ac.uk" }
     ],
     packages=find_packages(),
     install_requires=[
@@ -16,5 +16,5 @@ setup(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
-    ],
+    ]
 )
