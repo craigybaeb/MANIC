@@ -7,6 +7,9 @@ class Crossover():
         self.crossover = self.set_crossover_method(crossover_method)
         self.num_parents = num_parents
         self.population_size = population_size
+        self.parallel = False
+
+        self.validate_self()
 
     def set_crossover_method(self, crossover_method):
         if(crossover_method == "single_point"):
@@ -69,3 +72,10 @@ class Crossover():
             offspring.append(child)
         
         return offspring
+    
+    def validate_self(self):
+        if(self.population_size < 2):
+            raise ValueError("Population size must be at least 2.")
+        
+        if(self.num_parents < 2):
+            raise ValueError("Number of parents must be at least 2.")

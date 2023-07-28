@@ -2,15 +2,17 @@ import random
 import heapq
 import numpy as np
 
+import Baseline
 import Disagreement
 import Evaluation
 import Selection
 import Utility
 
 class Initialise:
-    def __init__(self, disagreement_method, data_instance, base_counterfactuals, predict_fn, predict_proba_fn, seed, population_size, categorical_features, feature_ranges, immutable_features, data, class_labels, theta, alpha, beta, num_parents, verbose):
+    def __init__(self, disagreement_method, data_instance, base_counterfactuals, predict_fn, predict_proba_fn, seed, population_size, categorical_features, feature_ranges, immutable_features, data, class_labels, theta, alpha, beta, num_parents, verbose, labels):
         self.seed = seed
         self.population_size = population_size
+        self.base_counterfactuals = base_counterfactuals
         self.data = data
         self.class_labels = class_labels
         self.categorical_features = categorical_features
@@ -19,31 +21,32 @@ class Initialise:
         self.categories = self.get_categories(categorical_features) #TODO infer from data
         self.feature_ranges = self.get_feature_ranges(feature_ranges)
         self.target_class = 1 - predict_fn(data_instance) #TODO don't assume binary classification
-        self.disagreement = Disagreement(disagreement_method, data_instance, base_counterfactuals, categorical_features, feature_ranges, predict_fn, predict_proba_fn, self.target_class)
+        self.disagreement = Disagreement(disagreement_method, data_instance, base_counterfactuals, categorical_features, feature_ranges, predict_fn, predict_proba_fn, self.target_class, self.feature_ranges)
         self.instance_probability = predict_proba_fn(data_instance)
         self.evaluation = Evaluation(alpha, beta, predict_proba_fn, self.instance_probability, base_counterfactuals, self.disagreement, data_instance, theta)
         self.selection = Selection(num_parents, self.target_class, population_size, predict_fn)
-        self.utils = Utility(data_instance, self.categories, immutable_features, self.target_class, verbose, predict_fn, self.disagreement, base_counterfactuals, self.evaluation)
+        self.utils = Utility(data_instance, self.categories, immutable_features, self.target_class, verbose, predict_fn, self.disagreement, base_counterfactuals, self.evaluation, labels)
         self.population = self.initialise_population()
+        self.baseline = Baseline(self.disagreement, base_counterfactuals, data_instance)
+
+    def weighted_random_choice(self, options, weights):
+        return random.choices(options, weights, k=1)[0]
 
     def initialise_population(self):
         random.seed(self.seed)
         population = []
-        feature_ranges = self.feature_ranges
+        options = [self.generate_random_instance, self.nearest_unlike_neighbors, self.randomly_sample_counterfactual]
+        weights = [0.5, 0.2, 0.3]  # These should add up to 1
 
         for _ in range(int(self.population_size / 2)):
-            candidate_instance = self.generate_random_instance(feature_ranges)
-            population.append(candidate_instance)
+            choice = self.weighted_random_choice(options, weights)
+            candidate = choice()
+            population.append(candidate)
 
-
-        nuns = self.nearest_unlike_neighbors()
-        
-        population = population + nuns
-
-        random.shuffle(population)
-
-        
         return population
+    
+    def randomly_sample_counterfactual(self):
+        return random.choice(self.base_counterfactuals)
     
     def get_feature_ranges(self, continuous_feature_ranges):
         feature_ranges = []
@@ -64,10 +67,10 @@ class Initialise:
 
         return feature_ranges
     
-    def generate_random_instance(self, feature_ranges):
+    def generate_random_instance(self):
         candidate_instance = []
 
-        for i, (min_val, max_val) in enumerate(feature_ranges):
+        for i, (min_val, max_val) in enumerate(self.feature_ranges):
             if i in self.immutable_features_set:
                 # For immutable features, use the original value
                 candidate_instance.append(min_val)
@@ -105,4 +108,4 @@ class Initialise:
             neighbor = self.data[index]
             unlike_neighbors.append(neighbor)
 
-        return unlike_neighbors
+        return random.choice(unlike_neighbors)

@@ -1,55 +1,43 @@
 import unittest
-from manic import Manic
+import numpy as np
+from Crossover import Crossover
 
-class TestManicCrossover(unittest.TestCase):
+class TestCrossover(unittest.TestCase):
+    def setUp(self):
+        # Set up the test data
+        self.num_parents = 2
+        self.population_size = 100
+        self.crossover = Crossover(crossover_method="single_point", num_parents=self.num_parents, population_size=self.population_size)
+        self.parents = [np.array([1, 2, 3]), np.array([4, 5, 6])]
 
-    def test_crossover(self):
-        # Create a Manic instance
-        data_instance = [1, 0.5, 'category_a']
-        base_counterfactuals = [[1, 0.4, 'category_b'], [1, 0.6, 'category_c']]
-        categorical_features = [2]
-        immutable_features = [0]
-        feature_ranges = {1: (0, 1), 2: ['category_a', 'category_b', 'category_c']}
-        data = [[1, 0.5, 'category_a'], [2, 0.7, 'category_b'], [1, 0.3, 'category_c']]
-        predict_fn = lambda x: 0
+    def test_single_point_crossover(self):
+        with self.subTest("Offspring size equals population_size"):
+            offspring = self.crossover.single_point_crossover(self.parents)
+            self.assertEqual(len(offspring), self.population_size)
 
-        manic_instance = Manic(
-            data_instance=data_instance,
-            base_counterfactuals=base_counterfactuals,
-            categorical_features=categorical_features,
-            immutable_features=immutable_features,
-            feature_ranges=feature_ranges,
-            data=data,
-            predict_fn=predict_fn,
-            population_size=100,
-            num_generations=50,
-            alpha=0.5,
-            beta=0.5,
-            perturbation_fraction=0.1,
-            num_parents=2,
-            seed=42,
-            verbose=0,
-            early_stopping=None,
-            max_time=None
-        )
+        with self.subTest("Each row in offspring has the same number of features"):
+            offspring = self.crossover.single_point_crossover(self.parents)
+            num_features = len(offspring[0])
+            self.assertTrue(all(len(row) == num_features for row in offspring))
 
-        # Initialize a population
-        population = manic_instance.initialize_population()
+        with self.subTest("num_parents is at least 2"):
+            # Set num_parents to 1 and check for ValueError
+            self.crossover.num_parents = 1
+            with self.assertRaises(ValueError):
+                self.crossover.single_point_crossover(self.parents)
 
-        # Test the crossover function
-        offspring = manic_instance.crossover(population)
+        with self.subTest("population size is at least 2"):
+            # Set population_size to 1 and check for ValueError
+            self.crossover.num_parents = 2
+            self.crossover.population_size = 1
+            with self.assertRaises(ValueError):
+                self.crossover.single_point_crossover(self.parents)
 
-        # Assert that the number of offspring is the same as the population size
-        self.assertEqual(len(offspring), manic_instance.population_size)
+        with self.subTest("len(self.parents) == num_parents"):
+            # Set num_parents to 3 and check for ValueError
+            self.crossover.num_parents = 3
+            with self.assertRaises(ValueError):
+                self.crossover.single_point_crossover(self.parents)
 
-        # Assert that each offspring is a valid instance (same length as the data instance)
-        for child in offspring:
-            self.assertEqual(len(child), len(data_instance))
-
-            # Assert that the features are within the valid range
-            for i, (min_val, max_val) in enumerate(manic_instance.feature_ranges):
-                self.assertGreaterEqual(child[i], min_val)
-                self.assertLessEqual(child[i], max_val)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

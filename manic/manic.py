@@ -1,13 +1,13 @@
 import time
-import concurrent.futures
+import os
 
-import Crossover
-import Initialise
-import Mutation
+from Crossover import Crossover
+from Initialise import Initialise
+from Mutation import Mutation
 
 class Manic:
-    def __init__(self, data_instance, base_counterfactuals, categorical_features, immutable_features, feature_ranges, data, predict_fn, predict_proba_fn, class_labels, population_size=100, num_generations=50, alpha=0.5, beta=0.5, crossover_method="uniform", mutation_method="random_resetting", perturbation_fraction=0.1, num_parents=2, seed=42, verbose=1, early_stopping=None, max_time=None, disagreement_method="euclidean_distance", theta=0.3):
-        self.initialise = Initialise(disagreement_method, data_instance, base_counterfactuals, predict_fn, predict_proba_fn, seed, population_size, categorical_features, feature_ranges, immutable_features, data, class_labels, theta, alpha, beta, num_parents, verbose)
+    def __init__(self, data_instance, base_counterfactuals, categorical_features, immutable_features, feature_ranges, data, predict_fn, predict_proba_fn, class_labels, population_size=100, num_generations=50, alpha=0.5, beta=0.5, crossover_method="uniform", mutation_method="random_resetting", perturbation_fraction=0.1, num_parents=2, seed=42, verbose=1, early_stopping=None, max_time=None, disagreement_method="euclidean_distance", theta=0.3, labels=[]):
+        self.initialise = Initialise(disagreement_method, data_instance, base_counterfactuals, predict_fn, predict_proba_fn, seed, population_size, categorical_features, feature_ranges, immutable_features, data, class_labels, theta, alpha, beta, num_parents, verbose, labels)
         self.immutable_features_set = self.initialise.immutable_features_set
         self.target_class = self.initialise.target_class
         self.instance_probability = self.initialise.instance_probability
@@ -20,6 +20,7 @@ class Manic:
         self.is_counterfactual_valid = self.utils.is_counterfactual_valid
         self.print_results = self.utils.print_results
         self.population = self.initialise.population
+        self.baseline = self.initialise.baseline
 
         self.data_instance = data_instance
         self.base_counterfactuals = base_counterfactuals
@@ -78,14 +79,39 @@ class Manic:
       else:
         return False
 
+    def get_cpu_time(self):
+      return time.process_time()
+
+    def get_cpu_cycles(self, cpu_time_seconds):
+      cpu_clock_speed_hz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
+      cpu_cycles = cpu_time_seconds * cpu_clock_speed_hz
+      
+      return cpu_cycles
+
     def generate_counterfactuals(self):
         start_time = time.time()
+        cpu_start_time = self.get_cpu_time()
 
         for generation in range(self.num_generations):
             if self.verbose == 1:
                 print(f"Generation {generation + 1}")
 
             fitness_scores = self.evaluation.evaluate_population(self.population)
+
+            #Maybe remove normalisation, not sure if ti works with our method
+            unnormalised_fitness_scores = fitness_scores
+            
+            normalise=False
+            if(normalise):
+              min_score = min(fitness_scores)
+              max_score = max(fitness_scores)
+
+              if min_score == max_score:
+                  # Handle the case when all scores are the same
+                  fitness_scores = [1.0] * len(fitness_scores)
+              else:
+                  fitness_scores = [(score - min_score) / (max_score - min_score) for score in fitness_scores]
+            
             parents = self.selection.select_parents(self.population, fitness_scores)
             offspring = self.crossover(parents)
             offspring = self.mutate(offspring)
@@ -103,10 +129,11 @@ class Manic:
                 formatted_counterfactual = self.utils.format_counterfactual(generation_best_counterfactual)
                 prediction = self.predict_fn(formatted_counterfactual)
                 if prediction == self.target_class:
-                    self.best_counterfactual = formatted_counterfactual
                     self.best_fitness = generation_best_fitness
-                    self.generation_found = generation
-                    self.time_found = time.time() - start_time
+                    if(formatted_counterfactual != self.best_counterfactual):
+                        self.best_counterfactual = formatted_counterfactual
+                        self.generation_found = generation
+                        self.time_found = time.time() - start_time
 
                     self.consecutive_generations_without_improvement = 0
                 else:
@@ -135,28 +162,19 @@ class Manic:
                 break
 
         end_time = time.time()
+        cpu_end_time = self.get_cpu_time()
+
+                # Calculate elapsed CPU time in seconds
+        elapsed_cpu_time_seconds = cpu_end_time - cpu_start_time
+
+        cpu_cycles = self.get_cpu_cycles(elapsed_cpu_time_seconds)
+
+        print(end_time - start_time)
+
+
         time_taken = end_time - start_time
 
         if self.verbose > 0:
-            self.print_results(self.best_counterfactual, self.best_fitness, generation + 1, self.generation_found, time_taken, self.time_found)
+            self.print_results(self.best_counterfactual, self.best_fitness, generation + 1, self.generation_found, time_taken, self.time_found, cpu_cycles)
 
         return self.best_counterfactual
-
-    #TODO broken
-    def generate_counterfactuals_parallel(self, data_instances, num_threads=2):
-        counterfactuals = {}
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-            future_to_instance = {executor.submit(self.generate_counterfactuals_single, data_instance): data_instance for data_instance in data_instances}
-
-            for future in concurrent.futures.as_completed(future_to_instance):
-                data_instance = future_to_instance[future]
-                counterfactual = future.result()
-                counterfactuals[data_instance] = counterfactual
-
-        return counterfactuals
-
-    #TODO broken
-    def generate_counterfactuals_single(self, data_instance):
-        self.data_instance = data_instance
-        return self.generate_counterfactuals()
