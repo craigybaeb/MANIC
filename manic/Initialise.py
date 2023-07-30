@@ -2,11 +2,11 @@ import random
 import heapq
 import numpy as np
 
-import Baseline
-import Disagreement
-import Evaluation
-import Selection
-import Utility
+from Baseline import Baseline
+from Disagreement import Disagreement
+from Evaluation import Evaluation
+from Selection import Selection
+from Utility import Utility
 
 class Initialise:
     def __init__(self, disagreement_method, data_instance, base_counterfactuals, predict_fn, predict_proba_fn, seed, population_size, categorical_features, feature_ranges, immutable_features, data, class_labels, theta, alpha, beta, num_parents, verbose, labels):
