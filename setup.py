@@ -9,7 +9,7 @@ with codecs.open(os.path.join(here, "README.md"), encoding="utf-8") as fh:
 
 setup(
     name="manic-xai",
-    version='1.0.4',
+    version='{{VERSION_PLACEHOLDER}}',
     author="Craig Pirie",
     author_email="c.pirie11@rgu.ac.uk",
     description="Genetic Algorithm for Generating Metacounterfactual Explanations",
