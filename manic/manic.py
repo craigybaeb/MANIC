@@ -1,55 +1,55 @@
-import time
-import os
+import heapq
+import random 
+import numpy as np
 
+from Baseline import Baseline
 from Crossover import Crossover
-from Initialise import Initialise
+from Disagreement import Disagreement
+from Evaluation import Evaluation
+from GeneticAlgorithm import GeneticAlgorithm
 from Mutation import Mutation
+from Replacement import Replacement
+from Selection import Selection
+from Utility import Utility
 
 class Manic:
-    def __init__(self, data_instance, base_counterfactuals, categorical_features, immutable_features, feature_ranges, data, predict_fn, predict_proba_fn, class_labels, population_size=100, num_generations=50, alpha=0.5, beta=0.5, crossover_method="uniform", mutation_method="random_resetting", perturbation_fraction=0.1, num_parents=2, seed=42, verbose=1, early_stopping=None, max_time=None, disagreement_method="euclidean_distance", theta=0.3, labels=[]):
-        self.initialise = Initialise(disagreement_method, data_instance, base_counterfactuals, predict_fn, predict_proba_fn, seed, population_size, categorical_features, feature_ranges, immutable_features, data, class_labels, theta, alpha, beta, num_parents, verbose, labels)
-        self.immutable_features_set = self.initialise.immutable_features_set
-        self.target_class = self.initialise.target_class
-        self.instance_probability = self.initialise.instance_probability
-        self.categories = self.initialise.categories
-        self.feature_ranges = self.initialise.feature_ranges
-        self.disagreement = self.initialise.disagreement
-        self.evaluation = self.initialise.evaluation
-        self.selection = self.initialise.selection
-        self.utils = self.initialise.utils
-        self.is_counterfactual_valid = self.utils.is_counterfactual_valid
-        self.print_results = self.utils.print_results
-        self.population = self.initialise.population
-        self.baseline = self.initialise.baseline
-
+    def __init__(self, data_instance, base_counterfactuals, categorical_features, immutable_features, feature_ranges, data, predict_fn, predict_proba_fn, class_labels, population_size=100, num_generations=50, alpha=0.5, beta=0.5, crossover_method="uniform", mutation_method="random_resetting", perturbation_fraction=0.1, num_parents=2, seed=42, verbose=1, early_stopping=None, max_time=None, disagreement_method="euclidean_distance", theta=0.3, parallel=False, labels=[]):
+        self.immutable_features_set = set(immutable_features)
+        self.data = data
         self.data_instance = data_instance
+        self.categorical_features = categorical_features
         self.base_counterfactuals = base_counterfactuals
+        self.population_size = population_size
+        self.labels = labels if labels else list(range(1, len(base_counterfactuals) + 1))
+        self.class_labels = class_labels
+        self.num_generations = num_generations
+        self.alpha = alpha
+        self.beta = beta
+        self.seed = seed
+        self.theta = theta
+        self.target_class = 1 - predict_fn(data_instance) #TODO don't assume binary classification
+        self.categories = self.get_categories(categorical_features)
+        self.feature_ranges = self.get_feature_ranges(feature_ranges)
+        self.disagreement = Disagreement(disagreement_method, data_instance, base_counterfactuals, categorical_features, feature_ranges, predict_fn, predict_proba_fn, self.target_class, self.feature_ranges)
+        self.population = self.initialise_population()
         self.categorical_features = categorical_features
         self.immutable_features = immutable_features
-        self.data = data
-        self.predict_fn = predict_fn
-        self.predict_proba_fn = predict_proba_fn
-        self.population_size = population_size
-        self.num_generations = num_generations
-        self.crossover = Crossover(crossover_method, num_parents, population_size).crossover
-        self.continuous_feature_ranges = feature_ranges
-        self.verbose = verbose
-        self.early_stopping = early_stopping
-        self.consecutive_generations_without_improvement = 0
-        self.max_time = max_time
+        self.crossover = Crossover(crossover_method, num_parents, population_size, parallel).crossover
         self.mutate = Mutation(mutation_method, perturbation_fraction, self.feature_ranges).mutate
-        self.best_counterfactual = None
-        self.best_fitness = float('inf')
-        self.generation_found = float('inf')
-        self.time_found = float('inf')
+        self.selection = Selection(num_parents, self.target_class, population_size, predict_fn, parallel)
+        self.instance_probability = predict_proba_fn(data_instance)
+        self.evaluation = Evaluation(alpha, beta, predict_proba_fn, self.instance_probability, base_counterfactuals, self.disagreement, data_instance, theta, parallel)
+        self.replacement = Replacement(self.crossover, self.mutate, self.evaluation, self.selection)
+        self.baseline = Baseline(self.disagreement, base_counterfactuals, data_instance)
+        self.utils = Utility(data_instance, self.categories, immutable_features, self.target_class, verbose, predict_fn, self.disagreement, base_counterfactuals, self.labels)
+        self.is_counterfactual_valid = self.utils.is_counterfactual_valid
+        self.print_results = self.utils.print_results
+        self.generate_counterfactuals = GeneticAlgorithm(num_generations, early_stopping, predict_fn, self.evaluation, self.selection, self.crossover, self.mutate, verbose, self.target_class, max_time, self.utils, self.replacement, self.population, base_counterfactuals, data_instance).generate_counterfactuals
 
     def __str__(self):
         attributes_str = [
-            f"data_instance: {self.data_instance}",
-            f"base_counterfactuals: {self.base_counterfactuals}",
             f"categorical_features: {self.categorical_features}",
             f"immutable_features: {self.immutable_features}",
-            f"data: {self.data}",
             f"population_size: {self.population_size}",
             f"num_generations: {self.num_generations}",
             f"target_class: {self.target_class}",
@@ -58,123 +58,88 @@ class Manic:
             f"feature_ranges: {self.feature_ranges}",
             f"verbose: {self.verbose}"
         ]
-
         return "\n".join(attributes_str)
 
     def to_string(self):
         return str(self)
+    
+    def weighted_random_choice(self, options, weights):
+        return random.choices(options, weights, k=1)[0]
 
-    def should_stop(self, generations, time_elapsed):
-      if('found' in list(self.early_stopping.keys()) and self.early_stopping['found'] == True):
-        if('patience_generations' in list(self.early_stopping.keys())):
-          if(self.early_stopping['patience_generations'] <= generations):
-            print(f"Early stopping at generation {generations}. No improvement for {self.early_stopping['patience_generations']} consecutive generations.")
-            return True
-        if('patience_time' in list(self.early_stopping.keys())):
-          if(self.early_stopping['patience_time'] < time_elapsed / 60):
-            print(f"Early stopping at time {(time_elapsed / 60):.2f} minutes. No improvement for {(self.early_stopping['patience_time']):.2f} minutes.")
-            return True
-        else:
-          return False
-      else:
-        return False
+    def initialise_population(self):
+        random.seed(self.seed)
+        population = []
+        options = [self.generate_random_instance, self.nearest_unlike_neighbors, self.randomly_sample_counterfactual]
+        weights = [0.5, 0.2, 0.3]  # These should add up to 1
 
-    def get_cpu_time(self):
-      return time.process_time()
+        for _ in range(int(self.population_size / 2)):
+            choice = self.weighted_random_choice(options, weights)
+            candidate = choice()
+            population.append(candidate)
 
-    def get_cpu_cycles(self, cpu_time_seconds):
-      cpu_clock_speed_hz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
-      cpu_cycles = cpu_time_seconds * cpu_clock_speed_hz
-      
-      return cpu_cycles
-
-    def generate_counterfactuals(self):
-        start_time = time.time()
-        cpu_start_time = self.get_cpu_time()
-
-        for generation in range(self.num_generations):
-            if self.verbose == 1:
-                print(f"Generation {generation + 1}")
-
-            fitness_scores = self.evaluation.evaluate_population(self.population)
-
-            #Maybe remove normalisation, not sure if ti works with our method
-            unnormalised_fitness_scores = fitness_scores
-            
-            normalise=False
-            if(normalise):
-              min_score = min(fitness_scores)
-              max_score = max(fitness_scores)
-
-              if min_score == max_score:
-                  # Handle the case when all scores are the same
-                  fitness_scores = [1.0] * len(fitness_scores)
-              else:
-                  fitness_scores = [(score - min_score) / (max_score - min_score) for score in fitness_scores]
-            
-            parents = self.selection.select_parents(self.population, fitness_scores)
-            offspring = self.crossover(parents)
-            offspring = self.mutate(offspring)
-            
-            # Combine elites and offspring
-            elites = self.selection.select_elites(self.population, fitness_scores)
-            self.population = elites + offspring
-
-            best_idx = fitness_scores.index(min(fitness_scores))
-            generation_best_counterfactual = self.population[best_idx]
-            generation_best_fitness = fitness_scores[best_idx]
-
-            if generation_best_fitness < self.best_fitness:
-                # Check if the candidate counterfactual produces the target class
-                formatted_counterfactual = self.utils.format_counterfactual(generation_best_counterfactual)
-                prediction = self.predict_fn(formatted_counterfactual)
-                if prediction == self.target_class:
-                    self.best_fitness = generation_best_fitness
-                    if(formatted_counterfactual != self.best_counterfactual):
-                        self.best_counterfactual = formatted_counterfactual
-                        self.generation_found = generation
-                        self.time_found = time.time() - start_time
-
-                    self.consecutive_generations_without_improvement = 0
-                else:
-                    self.consecutive_generations_without_improvement += 1
+        return population
+    
+    def randomly_sample_counterfactual(self):
+        return random.choice(self.base_counterfactuals)
+    
+    def get_feature_ranges(self, continuous_feature_ranges):
+        feature_ranges = []
+        for i in range(len(self.data_instance)):
+            if i in self.immutable_features_set:
+                # For immutable features, the range is a single value (the current value)
+                feature_ranges.append((self.data_instance[i], self.data_instance[i]))
+            elif i in self.categorical_features:
+                LOWER_BOUND = min(self.categories[i])
+                UPPER_BOUND = max(self.categories[i])
+                feature_ranges.append((LOWER_BOUND, UPPER_BOUND))
+            elif i in list(continuous_feature_ranges.keys()):
+                feature_ranges.append(continuous_feature_ranges[i])
             else:
-                self.consecutive_generations_without_improvement += 1
+                LOWER_BOUND = min(self.data[:, i]) - (min(self.data[:, i]) / 10)
+                UPPER_BOUND = max(self.data[:, i]) + (max(self.data[:, i]) / 10)
+                feature_ranges.append((LOWER_BOUND, UPPER_BOUND))
 
-            if self.early_stopping is not None:
-                time_elapsed = time.time() - start_time
-                if(self.should_stop(generation, time_elapsed)):
-                    if self.verbose > 0:
-                      break
+        return feature_ranges
+    
+    def generate_random_instance(self):
+        candidate_instance = []
 
-            if self.verbose == 2:
-                print(f"Generation {generation+1}: Best Counterfactual = {self.best_counterfactual}, Fitness = {self.best_fitness}")
+        for i, (min_val, max_val) in enumerate(self.feature_ranges):
+            if i in self.immutable_features_set:
+                # For immutable features, use the original value
+                candidate_instance.append(min_val)
+            elif i in self.categorical_features:
+                possible_values = sorted(set(int(data[i]) for data in self.data))
+                candidate_instance.append(random.choice(possible_values))
+            else:
+                candidate_value = random.uniform(min_val, max_val)
+                candidate_instance.append(max(min_val, min(max_val, candidate_value)))
 
-            if self.verbose == 3:
-                print(f"Generation {generation+1}:")
-                for idx, child in enumerate(offspring):
-                    print(f"Child {idx+1}: {child}")
+        return candidate_instance
+    
+    def get_categories(self, categorical_features):
+        categories = {}
+        for feature in categorical_features:
+            options = np.unique(self.data[:,feature])
+            categories[feature] = options
 
-            # Check if the specified maximum time is exceeded
-            if self.max_time is not None and (time.time() - start_time) > (self.max_time * 60):
-                if self.verbose > 0:
-                    print(f"Stopping search after {self.max_time} minutes.")
-                break
+        return categories
+    
+    def nearest_unlike_neighbors(self):
+        unlike_neighbors = []
+        distances = []
 
-        end_time = time.time()
-        cpu_end_time = self.get_cpu_time()
+        for i, instance in enumerate(self.data):
+            if self.target_class != self.class_labels[i]:
+                distance = self.disagreement.euclidean_distance(self.data_instance, instance)
+                distances.append((distance, i))  # Store both distance and index
 
-                # Calculate elapsed CPU time in seconds
-        elapsed_cpu_time_seconds = cpu_end_time - cpu_start_time
+        # Use heapq to efficiently find the n smallest distances and their corresponding indices
+        smallest_distances = heapq.nsmallest(int(self.population_size / 2), distances)
 
-        cpu_cycles = self.get_cpu_cycles(elapsed_cpu_time_seconds)
+        # Get the actual instances for the smallest distances
+        for distance, index in smallest_distances:
+            neighbor = self.data[index]
+            unlike_neighbors.append(neighbor)
 
-        print(end_time - start_time)
-
-
-        time_taken = end_time - start_time
-
-        if self.verbose > 0:
-            self.print_results(self.best_counterfactual, self.best_fitness, generation + 1, self.generation_found, time_taken, self.time_found, cpu_cycles)
-
-        return self.best_counterfactual
+        return random.choice(unlike_neighbors)

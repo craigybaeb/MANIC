@@ -6,9 +6,6 @@ WORKDIR /app
 
 # Copy the package files into the container
 COPY manic/ /app/manic/
-COPY setup.py /app/
-COPY README.md /app/
-COPY LICENSE /app/
 
 # Install pip dependencies
 RUN pip3 install .
