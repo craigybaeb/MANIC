@@ -53,24 +53,9 @@ docker build -t manic .
 docker run -v /path/to/your/data:/data -it manic python3 your_script.py
 ```
 
-## Citation
-If you use the Manic package in your research or work and find it helpful, we kindly request that you cite it using the following BibTeX entry:
-
-```bibtex
-@software{manic,
-  author       = {Craig Pirie},
-  title        = {Manic: A Genetic Algorithm-based Metaheuristic Approach for Nature-Inspired Aggregation of Counterfactuals},
-  year         = {2023},
-  publisher    = {GitHub},
-  journal      = {GitHub repository},
-  howpublished = {\url{https://github.com/your-username/manic}},
-}
-```
 
 We appreciate your support and acknowledgment of our work.
 
-## Contact
-For any inquiries or collaborations, please contact Craig Pirie at c.pirie11@rgu.ac.uk.
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.
