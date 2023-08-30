@@ -9,14 +9,14 @@ with codecs.open(os.path.join(here, "README.md"), encoding="utf-8") as fh:
 
 setup(
     name="manic-xai",
-    version='{{VERSION_PLACEHOLDER}}',
+    version='1.0.83',
     author="Craig Pirie",
     author_email="c.pirie11@rgu.ac.uk",
     description="Genetic Algorithm for Generating Metacounterfactual Explanations",
     url = "https://github.com/craigybaeb/MANIC",
     long_description_content_type="text/markdown",
     long_description=long_description,
-    packages=find_packages(),
+    packages=['manic'],
     install_requires=[
         "matplotlib>=3.4.3",
         "numpy>=1.21.2",

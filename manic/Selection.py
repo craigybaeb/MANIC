@@ -1,6 +1,7 @@
 import numbers
 import numpy as np
 import concurrent.futures
+import random
 
 class Selection:
     """
@@ -21,12 +22,14 @@ class Selection:
     @param parallel: Boolean flag to enable parallel execution of the selection process.
     @type parallel: bool
     """
-    def __init__(self, num_parents, target_class, population_size, predict_fn, parallel):
+    def __init__(self, num_parents, target_class, population_size, predict_fn, parallel=False, tournament_percentage=0.1, selection_strategy="tournament"):
         self.num_parents = num_parents
         self.target_class = target_class
         self.population_size = population_size
         self.predict_fn = predict_fn
         self.parallel = parallel
+        self.tournament_percentage = tournament_percentage
+        self.selection_strategy = set_selection_strategy(selection_strategy)
 
         self.validate_self()
 
@@ -54,6 +57,12 @@ class Selection:
         """
         return str(self)
     
+    def set_selection_strategy(self, selection_strategy):
+        if(selection_strategy == "fitness_proportionate"):
+            self.selection_strategy = self.select_parents
+        else:
+            self.selection_strategy = self.tournament_selection
+
     def select_elites(self, population, fitness_scores):
         """
         Select the elite instances from the population based on their fitness scores.
@@ -134,6 +143,39 @@ class Selection:
             parents.append(population[idx])
             fitness_scores[idx] = float('inf')
         return parents
+
+    def tournament_selection(self, population, fitness_scores):
+        """
+        Select the parents from the population based on tournament selection.
+
+        @param population: The current population of candidate counterfactuals.
+        @type population: list of list
+        @param fitness_scores: The fitness scores of the candidate counterfactuals.
+        @type fitness_scores: list of float
+        @param tournament_size: The number of individuals to participate in each tournament.
+        @type tournament_size: int
+        @return: The selected parents from the population.
+        @rtype: list of list
+        """
+
+        self.validate_population_and_fitness_scores(population, fitness_scores)
+
+        parents = []
+        for _ in range(self.num_parents):
+
+            tournament_size = int(len(population) * self.tournament_percentage)
+            # Select `tournament_size` individuals at random
+            selected_indices = random.sample(range(len(population)), tournament_size)
+
+            # Get the best among the selected
+            best_index = min(selected_indices, key=lambda index: fitness_scores[index])
+
+            parents.append(population[best_index])
+
+            # Optionally: Ensure the same individual isn't selected again
+            fitness_scores[best_index] = float('inf')
+
+        return parents
     
     def validate_population_and_fitness_scores(self, population, fitness_scores):
         """
@@ -161,6 +203,40 @@ class Selection:
         if len(population) == 0:
             raise ValueError("Population cannot be empty.")
         
+    def roulette_wheel_selection(self, fitness_scores):
+        total_fitness = sum(fitness_scores)
+        normalized_fitness = [score / total_fitness for score in fitness_scores]
+        
+        cumulative_probs = [sum(normalized_fitness[:i+1]) for i in range(len(normalized_fitness))]
+        
+        selection = random.random()
+        
+        for index, cumulative_prob in enumerate(cumulative_probs):
+            if selection <= cumulative_prob:
+                return index
+    
+    def select_parents_roulette(self, fitness_scores, num_parents):
+        selected_parents = []
+        
+        for _ in range(num_parents):
+            parent_index = self.roulette_wheel_selection(fitness_scores)
+            selected_parents.append(self.population[parent_index])
+        
+        return selected_parents
+    
+    def rank_selection(self, num_parents):
+        fitness_scores = self.compute_fitness_scores()  # Implement a method to compute fitness scores
+        
+        # Rank the fitness scores in descending order
+        ranked_indices = sorted(range(len(fitness_scores)), key=lambda k: fitness_scores[k], reverse=True)
+        
+        selected_parents = []
+        for i in range(num_parents):
+            parent_index = ranked_indices[i]
+            selected_parents.append(self.population[parent_index])
+        
+        return selected_parents
+    
     def validate_self(self):
         """
         Validate the input parameters.

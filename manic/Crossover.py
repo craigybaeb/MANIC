@@ -18,11 +18,12 @@ class Crossover:
     @param parallel: A boolean flag indicating whether to run crossover in parallel (True/False).
     @type parallel: bool
     """
-    def __init__(self, crossover_method, num_parents, population_size, parallel):
+    def __init__(self, crossover_method, num_parents, population_size, parallel, feature_ranges):
         self.crossover = self.set_crossover_method(crossover_method)
         self.num_parents = num_parents 
         self.population_size = population_size
         self.parallel = parallel
+        self.feature_ranges = feature_ranges
 
         # Validate the input parameters
         self.validate_self()
@@ -151,6 +152,14 @@ class Crossover:
                     child.append(parent1[j])
                 else:
                     child.append(parent2[j])
+                
+                lower_bound, upper_bound = self.feature_ranges[j]
+                if(child[j] > upper_bound):
+                    child[j] = upper_bound
+                
+                if(child[j] < lower_bound):
+                    child[j] = lower_bound
+
             
             # Add the child to the offspring list
             offspring.append(child)

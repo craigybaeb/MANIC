@@ -2,13 +2,14 @@ import os
 import time
 
 class GeneticAlgorithm:
-    def __init__(self, num_generations, early_stopping, predict_fn, evaluation, selection, crossover, mutate, verbose, target_class, max_time, utils, replacement, population, base_counterfactuals, data_instance):
+    def __init__(self, num_generations, early_stopping, predict_fn, evaluation, selection, crossover, mutate, verbose, target_class, max_time, utils, replacement, population, base_counterfactuals, data_instance, disagreement, wachter):
         self.num_generations = num_generations
         self.early_stopping = early_stopping
         self.predict_fn = predict_fn
         self.evaluation = evaluation
         self.selection = selection
         self.crossover = crossover
+        self.wachter = wachter
         self.mutate = mutate
         self.verbose = verbose
         self.target_class = target_class
@@ -21,23 +22,32 @@ class GeneticAlgorithm:
         self.replacement = replacement
         self.population = population
         self.base_counterfactuals = base_counterfactuals
-        self.data_instance
+        self.data_instance = data_instance
+        self.disagreement = disagreement
+        self.consecutive_generations_without_improvement = 0
 
-
-    def should_stop(self, generations, time_elapsed):
-      if('found' in list(self.early_stopping.keys()) and self.early_stopping['found'] == True):
+    def generations_or_time_reached(self, generations, time_elapsed):
         if('patience_generations' in list(self.early_stopping.keys())):
           if(self.early_stopping['patience_generations'] <= generations):
             print(f"Early stopping at generation {generations}. No improvement for {self.early_stopping['patience_generations']} consecutive generations.")
             return True
+        
         if('patience_time' in list(self.early_stopping.keys())):
           if(self.early_stopping['patience_time'] < time_elapsed / 60):
             print(f"Early stopping at time {(time_elapsed / 60):.2f} minutes. No improvement for {(self.early_stopping['patience_time']):.2f} minutes.")
             return True
-        else:
-          return False
-      else:
         return False
+          
+    def should_stop(self, generations, time_elapsed):
+        if('found' in list(self.early_stopping.keys()) and self.early_stopping['found'] == True):
+            if(self.best_counterfactual != None):
+                stop = self.generations_or_time_reached(generations, time_elapsed)
+                return stop
+        elif('found' in list(self.early_stopping.keys()) and self.early_stopping['found'] == False):
+            stop = self.generations_or_time_reached(generations, time_elapsed)
+            return stop
+        else:
+            return False
 
     def get_cpu_time(self):
       return time.process_time()
@@ -87,7 +97,7 @@ class GeneticAlgorithm:
             # Check if the termination criteria has been met
             if self.early_stopping is not None:
                 time_elapsed = time.time() - start_time
-                if(self.should_stop(generation, time_elapsed)):
+                if(self.should_stop(self.consecutive_generations_without_improvement, time_elapsed)):
                     if self.verbose > 0:
                       break
 
@@ -106,19 +116,29 @@ class GeneticAlgorithm:
         end_time = time.time()
         time_taken = end_time - start_time
 
-        proximity_score = self.disagreement.calculate_proximity(self.data_instance, self.best_counterfactual, True)
-        sparsity_score, number_of_changes = self.disagreement.calculate_sparsity(self.best_counterfactual)
-        base_cf_scores = []
-        for base_cf in self.base_counterfactuals:
-            base_cf_scores.append(self.evaluation.calculate_base_cf_scores([self.best_counterfactual], base_cf))
+        # Initialise scores
+        proximity_score = float('inf')
+        sparsity_score = float('inf')
+        disagreement_score = float('inf')
+        number_of_changes = float('inf')
 
-        disagreement_score = sum(score for score in base_cf_scores) / len(base_cf_scores)
+        # Get scores
+        if(self.best_counterfactual != None):
+            proximity_score = self.disagreement.calculate_proximity(self.data_instance, self.best_counterfactual, True)
+            sparsity_score, number_of_changes = self.disagreement.calculate_sparsity(self.best_counterfactual)
+            
+            if(not self.wachter):
+                base_cf_scores = []
+                
+                # Get average disagreement
+                for base_cf in self.base_counterfactuals:
+                    base_cf_scores.append(self.evaluation.calculate_base_cf_scores([self.best_counterfactual], base_cf))
+
+                disagreement_score = sum(score for score in base_cf_scores) / len(base_cf_scores)
 
         # Show results
         if self.verbose > 0:
             self.utils.print_results(self.best_counterfactual, self.best_fitness, generation + 1, self.generation_found, time_taken, self.time_found, cpu_cycles, proximity_score, sparsity_score, number_of_changes, disagreement_score)
-
-        
 
         # Store results in a dictionary
         results = {

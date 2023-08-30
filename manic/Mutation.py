@@ -18,11 +18,13 @@ class Mutation:
         ValueError: If the feature_ranges parameter is None or empty.
         Warning: If an invalid mutation method is provided, it defaults to "random_resetting".
     """
-    def __init__(self, mutation_method, perturbation_fraction, feature_ranges):
+    def __init__(self, mutation_method, perturbation_fraction, feature_ranges, categories, categorical_features):
         self.mutation_method = mutation_method
         self.mutate = self.set_mutation(mutation_method)
         self.perturbation_fraction = perturbation_fraction
         self.feature_ranges = feature_ranges
+        self.categories = categories
+        self.categorical_features = categorical_features
 
         self.validate_self()
 
@@ -82,12 +84,17 @@ class Mutation:
             mutated_instance = offspring[i].copy()  # Create a copy of the instance
             for j in range(len(offspring[i])):
                 if random.random() < self.perturbation_fraction:
-                    lower_bound, upper_bound = self.feature_ranges[j]
-                    mutation_value = random.uniform(lower_bound, upper_bound)
-                    mutated_instance[j] = max(lower_bound, min(upper_bound, mutation_value))
+                    if(j in self.categorical_features):
+                        category = random.sample(list(self.categories[j]), 1)[0]
+                        mutated_instance[j] = category
+                    else:
+                        lower_bound, upper_bound = self.feature_ranges[j]
+                        mutation_value = random.uniform(lower_bound, upper_bound)
+                        mutated_instance[j] = max(lower_bound, min(upper_bound, mutation_value))
             new_offspring.append(mutated_instance)
         return new_offspring
     
+    # TODO add constraints if keeeping
     def swap_mutation(self, offspring):
         """
         Apply swap mutation to the offspring.

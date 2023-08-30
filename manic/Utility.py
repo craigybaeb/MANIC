@@ -60,7 +60,7 @@ class Utility:
             if i in self.categories:
                 formatted_counterfactual.append(round(counterfactual[i]))
             else:
-                decimal_feature = decimal.Decimal(self.data_instance[i])
+                decimal_feature = decimal.Decimal(str(self.data_instance[i]))
                 decimal_places = decimal_feature.as_tuple().exponent * -1
 
                 if decimal_places == 0:
